@@ -1,0 +1,17 @@
+ARIA Test Document
+
+This is a test document for ARIA's document analysis feature.
+
+Key Points:
+1. ARIA is a multi-agent system
+2. It can analyze and summarize documents
+3. It uses LangChain and Groq LLM for intelligent analysis
+4. DocumentAgent specializes in file analysis
+
+Features:
+- Upload PDF, TXT, DOCX files
+- Ask questions about uploaded content
+- Get summaries and key information extraction
+- Support for multiple documents in a session
+
+This document is used to test the document upload and summarization functionality.

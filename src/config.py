@@ -5,7 +5,9 @@ import os
 load_dotenv()
 
 @dataclass
-class AgentConfig:
+class Config:
+    """Centralized configuration for ARIA"""
+    
     # LLM
     groq_api_key: str = os.getenv("GROQ_API_KEY", "")
     model_name: str = "llama-3.3-70b-versatile"
@@ -34,4 +36,4 @@ class AgentConfig:
             self.cors_origins = ["*"]
         os.makedirs(self.upload_dir, exist_ok=True)
 
-config = AgentConfig()
+config = Config()

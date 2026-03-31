@@ -1,7 +1,7 @@
-from langchain_core.tools import tool
-from langchain_community.document_loaders import PyPDFLoader, TextLoader, Docx2txtLoader
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from config import config
+from langchain_core.tools import tool, Tool
+from langchain_community.document_loaders import PyPDFLoader, TextLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from src.config import config
 import os
 import logging
 
@@ -17,15 +17,22 @@ def load_document(filepath: str) -> str:
     try:
         if ext == ".pdf":
             loader = PyPDFLoader(filepath)
+            docs = loader.load()
+            full_text = "\n\n".join(doc.page_content for doc in docs)
         elif ext in (".txt", ".md"):
             loader = TextLoader(filepath, encoding="utf-8")
+            docs = loader.load()
+            full_text = "\n\n".join(doc.page_content for doc in docs)
         elif ext == ".docx":
-            loader = Docx2txtLoader(filepath)
+            # Use docx2txt for .docx files
+            try:
+                import docx2txt
+                full_text = docx2txt.process(filepath)
+            except ImportError:
+                return f"Unsupported file type: {ext} (docx2txt not installed)"
         else:
             return f"Unsupported file type: {ext}"
         
-        docs = loader.load()
-        full_text = "\n\n".join(doc.page_content for doc in docs)
         filename = os.path.basename(filepath)
         _loaded_docs[filename] = full_text
         logger.info(f"Loaded document: {filename} ({len(full_text)} chars)")
@@ -38,14 +45,9 @@ def get_loaded_filenames() -> list:
     """Return list of currently loaded document filenames."""
     return list(_loaded_docs.keys())
 
-@tool
-def read_document(filename: str) -> str:
+def _read_document_impl(filename: str) -> str:
     """
     Read and return the contents of an uploaded document.
-    Use this when the user asks questions about a file they uploaded,
-    wants you to summarise a document, or refers to a file by name.
-    Input should be the filename (e.g. 'report.pdf' or 'notes.txt').
-    Returns the full text content of the document.
     """
     # Check if already loaded in memory
     if filename in _loaded_docs:
@@ -63,12 +65,9 @@ def read_document(filename: str) -> str:
     text = load_document(filepath)
     return text[:6000] + ("\n\n[Document truncated for length...]" if len(text) > 6000 else "")
 
-@tool
-def list_documents(placeholder: str = "") -> str:
+def _list_documents_impl(placeholder: str = "") -> str:
     """
     List all documents that have been uploaded and are available to read.
-    Use this when the user asks what files are available or uploaded.
-    Input can be any string or empty string.
     """
     # Scan uploads folder
     if not os.path.exists(config.upload_dir):
@@ -80,6 +79,26 @@ def list_documents(placeholder: str = "") -> str:
     ]
     
     if not files:
-        return "No documents uploaded yet. Upload a PDF, TXT, or DOCX file to get started."
+        return "No documents uploaded yet. Please upload a PDF, TXT, DOCX, or Markdown file."
     
-    return "Available documents:\n" + "\n".join(f"- {f}" for f in files)
+    return f"Available documents: {', '.join(files)}"
+
+
+# Create tools as Tool objects instead of using @tool decorator
+read_document = Tool(
+    name="read_document",
+    func=_read_document_impl,
+    description="""Read and return the contents of an uploaded document.
+Use this when the user asks questions about a file they uploaded,
+wants you to summarise a document, or refers to a file by name.
+Input should be the filename (e.g. 'report.pdf' or 'notes.txt').
+Returns the full text content of the document."""
+)
+
+list_documents = Tool(
+    name="list_documents",
+    func=_list_documents_impl,
+    description="""List all documents that have been uploaded and are available to read.
+Use this when the user asks what files are available or uploaded.
+Input can be any string or empty string."""
+)

@@ -1,16 +1,12 @@
-from langchain_core.tools import tool
-from config import config
+from langchain_core.tools import Tool
+from src.config import config
 import logging
 
 logger = logging.getLogger(__name__)
 
-@tool
-def web_search(query: str) -> str:
+def _web_search_impl(query: str) -> str:
     """
     Search the web for current information on any topic.
-    Use this when the user asks about recent events, news, current prices,
-    live data, or anything that requires up-to-date information.
-    Input should be a clear search query string.
     """
     # Try Tavily first (better quality)
     if config.tavily_api_key:
@@ -52,3 +48,14 @@ def web_search(query: str) -> str:
     except Exception as e:
         logger.error(f"DuckDuckGo search also failed: {e}")
         return f"Search failed: {str(e)}"
+
+
+# Create tool as Tool object instead of using @tool decorator
+web_search = Tool(
+    name="web_search",
+    func=_web_search_impl,
+    description="""Search the web for current information on any topic.
+Use this when the user asks about recent events, news, current prices,
+live data, or anything that requires up-to-date information.
+Input should be a clear search query string."""
+)

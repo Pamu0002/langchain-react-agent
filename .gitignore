@@ -49,6 +49,23 @@ uploads/
 *.sqlite
 *.log
 
+# Testing and coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.tox/
+
+# Old structure (deprecated, to clean up)
+/agent.py
+/agents.py
+/config.py
+/memory.py
+/tools/
+/frontend/
+/agents/
+
+
 # LangChain
 .langchain/
 .langsmith/
