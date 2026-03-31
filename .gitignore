@@ -79,3 +79,8 @@ htmlcov/
 *.tmp
 *.temp
 .cache/
+
+# Testing and development files
+test_document*.py
+test_document*.txt
+800
