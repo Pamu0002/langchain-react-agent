@@ -1,0 +1,436 @@
+const API_BASE = "http://localhost:8000";
+
+let sessionId = null;
+let isLoading = false;
+let recentChats = [];
+let isDarkMode = localStorage.getItem("theme") === "dark";
+
+console.log("✅ app.js loaded - API_BASE:", API_BASE);
+console.log("✅ isDarkMode from localStorage:", isDarkMode);
+
+// Initialize theme - with DOM check
+function initTheme() {
+  const themeToggle = document.querySelector(".theme-toggle");
+  const themeName = document.getElementById("theme-name");
+  
+  if (isDarkMode && themeToggle && themeName) {
+    document.body.classList.add("dark-mode");
+    themeToggle.textContent = "☀️";
+    themeName.textContent = "Dark";
+  }
+}
+
+function toggleTheme() {
+  console.log("🌓 toggleTheme() called");
+  console.log("  - Before: isDarkMode =", isDarkMode);
+  
+  isDarkMode = !isDarkMode;
+  console.log("  - After: isDarkMode =", isDarkMode);
+  
+  document.body.classList.toggle("dark-mode");
+  console.log("  - Body dark-mode class toggled, current classes:", document.body.className);
+  
+  const themeToggle = document.querySelector(".theme-toggle");
+  const themeName = document.getElementById("theme-name");
+  
+  if (isDarkMode) {
+    console.log("  - Switching to DARK mode");
+    if (themeToggle) {
+      themeToggle.textContent = "☀️";
+      console.log("    - Theme toggle emoji updated to ☀️");
+    }
+    if (themeName) {
+      themeName.textContent = "Dark";
+      console.log("    - Theme name updated to 'Dark'");
+    }
+    localStorage.setItem("theme", "dark");
+    console.log("    - localStorage set to 'dark'");
+  } else {
+    console.log("  - Switching to LIGHT mode");
+    if (themeToggle) {
+      themeToggle.textContent = "🌙";
+      console.log("    - Theme toggle emoji updated to 🌙");
+    }
+    if (themeName) {
+      themeName.textContent = "Light";
+      console.log("    - Theme name updated to 'Light'");
+    }
+    localStorage.setItem("theme", "light");
+    console.log("    - localStorage set to 'light'");
+  }
+  console.log("✅ Theme toggle complete!");
+}
+
+function addToRecentChats(message) {
+  const truncated = message.substring(0, 40) + (message.length > 40 ? "..." : "");
+  if (!recentChats.includes(truncated)) {
+    recentChats.unshift(truncated);
+    if (recentChats.length > 5) recentChats.pop();
+    updateRecentChatsUI();
+  }
+}
+
+function updateRecentChatsUI() {
+  const container = document.getElementById("recent-chats");
+  if (!container) return;
+  if (recentChats.length === 0) {
+    container.innerHTML = '<div class="sidebar-item">No recent chats</div>';
+    return;
+  }
+  container.innerHTML = recentChats.map(chat => 
+    `<div class="sidebar-item" title="${chat}">${chat}</div>`
+  ).join("");
+}
+
+// Agent emoji mapping
+const agentEmojis = {
+  "research": "🔍",
+  "document": "📄",
+  "general": "💭",
+  "code": "💻"
+};
+
+function getAgentEmoji(agentUsed) {
+  if (!agentUsed) return "✨";
+  const agentName = agentUsed.toLowerCase().replace("-", "").replace("agent", "").trim();
+  for (const [key, emoji] of Object.entries(agentEmojis)) {
+    if (agentName.includes(key)) return emoji;
+  }
+  return "✨";
+}
+
+// --- Message rendering ---
+
+function appendMessage(role, text, agentUsed = null) {
+  const welcome = document.getElementById("welcome");
+  if (welcome) welcome.remove();
+
+  const container = document.getElementById("messages");
+  const div = document.createElement("div");
+  div.className = `message ${role}`;
+
+  const initial = role === "user" ? "👤" : getAgentEmoji(agentUsed);
+  const avatarClass = role === "user" ? "user-av" : "aria-av";
+
+  let content = `
+    <div class="avatar ${avatarClass}">${initial}</div>
+    <div class="message-content">
+  `;
+  
+  if (role === "assistant" && agentUsed) {
+    content += `<div class="agent-badge">${agentUsed}</div>`;
+  }
+  
+  content += `
+      <div class="bubble">${formatText(text)}</div>
+    </div>
+  `;
+
+  div.innerHTML = content;
+  
+  // Add hover effect
+  div.style.cursor = role === "user" ? "default" : "pointer";
+  div.title = role === "assistant" ? "Click to copy" : "";
+  
+  if (role === "assistant") {
+    div.addEventListener("click", () => {
+      const bubble = div.querySelector(".bubble");
+      const text = bubble.innerText;
+      navigator.clipboard.writeText(text).then(() => {
+        const originalContent = bubble.innerHTML;
+        bubble.innerHTML = "✓ Copied!";
+        setTimeout(() => { bubble.innerHTML = originalContent; }, 1500);
+      });
+    });
+  }
+  
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+  return div;
+}
+
+function appendTyping() {
+  const welcome = document.getElementById("welcome");
+  if (welcome) welcome.remove();
+
+  const container = document.getElementById("messages");
+  const div = document.createElement("div");
+  div.className = "message assistant";
+  div.id = "typing-indicator";
+  div.innerHTML = `
+    <div class="avatar aria-av">✨</div>
+    <div class="message-content">
+      <div class="bubble typing">
+        <span></span><span></span><span></span>
+      </div>
+    </div>
+  `;
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+}
+
+function removeTyping() {
+  const el = document.getElementById("typing-indicator");
+  if (el) el.remove();
+}
+
+function formatText(text) {
+  // Basic markdown: code blocks, bold, line breaks
+  return text
+    .replace(/```([\s\S]*?)```/g, "<pre>$1</pre>")
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
+    .replace(/\n/g, "<br>");
+}
+
+// --- Send message ---
+
+async function sendMessage() {
+  console.log("Send button clicked!");
+  const input = document.getElementById("msg-input");
+  if (!input) {
+    console.error("Input element not found");
+    return;
+  }
+  
+  const message = input.value.trim();
+  console.log("Message:", message);
+  console.log("Is loading:", isLoading);
+  
+  if (!message || isLoading) {
+    console.log("Message empty or already loading, returning");
+    return;
+  }
+
+  input.value = "";
+  input.style.height = "44px";
+  setLoading(true);
+
+  addToRecentChats(message);
+  appendMessage("user", message);
+  appendTyping();
+
+  try {
+    console.log("Sending to API:", API_BASE + "/chat");
+    const res = await fetch(`${API_BASE}/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message, session_id: sessionId })
+    });
+
+    console.log("Response status:", res.status);
+    if (!res.ok) throw new Error(`Server error: ${res.status}`);
+    const data = await res.json();
+
+    console.log("Got response:", data);
+    removeTyping();
+    appendMessage("assistant", data.response, data.agent_used);
+
+    // Save session
+    sessionId = data.session_id;
+    document.getElementById("session-display").textContent = `session: ${sessionId || ""}`;
+
+  } catch (err) {
+    console.error("Error:", err);
+    removeTyping();
+    appendMessage("assistant", `Sorry, something went wrong: ${err.message}`);
+  } finally {
+    setLoading(false);
+  }
+}
+
+// --- File upload ---
+
+async function uploadFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+
+  const status = document.getElementById("file-status");
+  status.textContent = `Uploading ${file.name}...`;
+  status.className = "file-status visible";
+
+  const formData = new FormData();
+  formData.append("file", file);
+
+  try {
+    const res = await fetch(`${API_BASE}/upload`, {
+      method: "POST",
+      body: formData
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || "Upload failed");
+    }
+
+    const data = await res.json();
+    status.textContent = `✅ ${file.name} uploaded successfully`;
+    status.className = "file-status visible success";
+
+    appendMessage("assistant", `📎 I've loaded **${file.name}** (${data.size_mb}MB). Ask me anything about it!`, "Document Agent");
+
+  } catch (err) {
+    status.textContent = `❌ Upload failed: ${err.message}`;
+    status.className = "file-status visible error";
+  }
+
+  input.value = "";
+  setTimeout(() => { status.className = "file-status"; }, 4000);
+}
+
+// --- Clear chat ---
+
+async function clearChat() {
+  if (sessionId) {
+    await fetch(`${API_BASE}/clear`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: sessionId })
+    });
+  }
+  sessionId = null;
+  document.getElementById("messages").innerHTML = `
+    <div class="welcome" id="welcome">
+      <h2>Welcome to ARIA ✨</h2>
+      <p>Your intelligent multi-agent AI assistant powered by advanced LLMs</p>
+      
+      <div class="agents-grid">
+        <div class="agent-card">
+          <div class="agent-emoji">🔍</div>
+          <div class="agent-name">Research</div>
+          <div class="agent-desc">Web search & trending</div>
+        </div>
+        <div class="agent-card">
+          <div class="agent-emoji">📄</div>
+          <div class="agent-name">Document</div>
+          <div class="agent-desc">PDF & file analysis</div>
+        </div>
+        <div class="agent-card">
+          <div class="agent-emoji">💭</div>
+          <div class="agent-name">General Q&A</div>
+          <div class="agent-desc">Knowledge & reasoning</div>
+        </div>
+        <div class="agent-card">
+          <div class="agent-emoji">💻</div>
+          <div class="agent-name">Code</div>
+          <div class="agent-desc">Programming help</div>
+        </div>
+      </div>
+
+      <div class="chips">
+        <span class="chip" onclick="sendQuickMessage('Search for latest AI news')">🌐 AI News</span>
+        <span class="chip" onclick="sendQuickMessage('Explain how machine learning works')">🤖 ML Basics</span>
+        <span class="chip" onclick="sendQuickMessage('Help me write a Python function')">🐍 Python Code</span>
+      </div>
+    </div>`;
+  document.getElementById("session-display").textContent = "";
+}
+
+// --- Helpers ---
+
+function sendQuickMessage(text) {
+  const input = document.getElementById("msg-input");
+  input.value = text;
+  sendMessage();
+}
+
+function setLoading(state) {
+  isLoading = state;
+  const sendBtn = document.querySelector(".send-btn");
+  if (sendBtn) sendBtn.disabled = state;
+  const msgInput = document.getElementById("msg-input");
+  if (msgInput) msgInput.disabled = state;
+}
+
+// Initialize all event listeners and theme when DOM is ready
+function initializeApp() {
+  console.log("🚀 Initializing ARIA app...");
+  
+  // Initialize theme
+  initTheme();
+  
+  // Set up send button event listener
+  const sendBtn = document.querySelector(".send-btn");
+  if (sendBtn) {
+    console.log("✓ Send button found, attaching event listener");
+    sendBtn.addEventListener("click", sendMessage);
+  } else {
+    console.error("✗ Send button NOT found!");
+  }
+  
+  // Set up message input Enter key and auto-expand
+  const msgInput = document.getElementById("msg-input");
+  if (msgInput) {
+    console.log("✓ Message input found, attaching listeners");
+    msgInput.addEventListener("keypress", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+    msgInput.addEventListener("input", () => {
+      msgInput.style.height = "44px";
+      msgInput.style.height = Math.min(msgInput.scrollHeight, 150) + "px";
+    });
+  } else {
+    console.error("✗ Message input NOT found!");
+  }
+  
+  // Set up theme toggle with verification
+  const themeToggle = document.querySelector(".theme-toggle");
+  if (themeToggle) {
+    console.log("✓ Theme toggle found, attaching event listener");
+    console.log("  - Current checkbox state:", themeToggle.checked);
+    console.log("  - isDarkMode:", isDarkMode);
+    themeToggle.addEventListener("click", (e) => {
+      console.log("🔄 Theme toggle clicked!");
+      toggleTheme();
+    });
+  } else {
+    console.error("✗ Theme toggle button NOT found!");
+    console.log("  - Looking for element with class 'theme-toggle'");
+  }
+  
+  // Set up file upload button
+  const uploadBtn = document.querySelector(".upload-btn");
+  const fileInput = document.getElementById("file-input");
+  if (uploadBtn && fileInput) {
+    console.log("✓ Upload button found, attaching event listener");
+    uploadBtn.addEventListener("click", () => {
+      fileInput.click();
+    });
+  }
+  
+  // Set up file input change
+  if (fileInput) {
+    console.log("✓ File input found, attaching change listener");
+    fileInput.addEventListener("change", (e) => uploadFile(e.target));
+  }
+  
+  // Set up clear button
+  const clearBtn = document.querySelector(".clear-btn");
+  if (clearBtn) {
+    console.log("✓ Clear button found, attaching event listener");
+    clearBtn.addEventListener("click", clearChat);
+  }
+  
+  // Set up quick message chips
+  const chips = document.querySelectorAll(".chip");
+  chips.forEach((chip) => {
+    chip.addEventListener("click", () => {
+      const msg = chip.getAttribute("data-message") || chip.textContent.trim();
+      document.getElementById("msg-input").value = msg;
+      sendMessage();
+    });
+  });
+  
+  console.log("✅ ARIA initialization complete!");
+}
+
+// Initialize when DOM is ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initializeApp);
+} else {
+  initializeApp();
+}
+

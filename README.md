@@ -146,7 +146,6 @@ Navigate to: **http://localhost:8000**
 ```
 src/
 ├── __init__.py              # Package marker
-├── agent.py                 # Single agent (backward compatible)
 ├── config.py                # Centralized configuration
 │
 ├── api/

@@ -1,4 +1,7 @@
-const API_BASE = "http://localhost:8000";
+#!/usr/bin/env python3
+import os
+
+new_app_js = '''const API_BASE = "http://localhost:8000";
 
 let sessionId = null;
 let isLoading = false;
@@ -88,10 +91,10 @@ function appendMessage(role, text, agentUsed = null) {
 
 function formatText(text) {
   return text
-    .replace(/```([\s\S]*?)```/g, "<pre>$1</pre>")
+    .replace(/```([\\s\\S]*?)```/g, "<pre>$1</pre>")
     .replace(/`([^`]+)`/g, "<code>$1</code>")
-    .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
-    .replace(/\n/g, "<br>");
+    .replace(/\\*\\*(.*?)\\*\\*/g, "<strong>$1</strong>")
+    .replace(/\\n/g, "<br>");
 }
 
 function appendTyping() {
@@ -293,3 +296,11 @@ if (document.readyState === 'loading') {
   console.log("📋 DOM already ready, initializing now...");
   initializeApp();
 }
+'''
+
+file_path = r"c:\Users\Pamudi\Desktop\new\Projects\agent aiii\src\frontend\app.js"
+with open(file_path, 'w', encoding='utf-8') as f:
+    f.write(new_app_js)
+
+print(f"✅ app.js updated successfully!")
+print(f"📝 File size: {len(new_app_js)} characters")

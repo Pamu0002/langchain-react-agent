@@ -6,8 +6,7 @@ from typing import Optional
 class ChatRequest(BaseModel):
     message: str
     session_id: Optional[str] = None
-    use_multi_agent: Optional[bool] = False
-    agent_type: Optional[str] = None
+    agent_type: Optional[str] = None  # Optional: specify agent directly, or None for auto-routing
 
 class ChatResponse(BaseModel):
     response: str
@@ -28,6 +27,6 @@ class HealthResponse(BaseModel):
     model: str
 
 class AgentListResponse(BaseModel):
-    single_agent: dict
-    multi_agents: dict
-    usage: dict
+    system: str
+    agents: dict
+    routing: dict

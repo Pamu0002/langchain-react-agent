@@ -5,7 +5,6 @@ from src.api.models import (
     ChatRequest, ChatResponse, ClearRequest, ClearResponse,
     HealthResponse, AgentListResponse
 )
-from src.agent import run_agent
 from src.agents import run_multi_agent
 from src.memory import clear_session, get_history_as_text
 from src.tools.doc_reader import load_document
@@ -30,12 +29,8 @@ async def health():
 async def list_agents():
     """List available agents and their specialties"""
     return {
-        "single_agent": {
-            "name": "All-in-One Agent",
-            "description": "Original agent with all tools combined",
-            "mode": {"use_multi_agent": False}
-        },
-        "multi_agents": {
+        "system": "Multi-Agent with Intelligent Coordinator",
+        "agents": {
             "research": {
                 "name": "Research Agent",
                 "description": "Specialized in web search and current information",
@@ -61,20 +56,14 @@ async def list_agents():
                 "best_for": "Coding questions, tech help, debugging"
             }
         },
-        "usage": {
-            "single_mode": {
-                "use_multi_agent": False,
-                "agent_type": None
-            },
-            "multi_mode_auto": {
-                "use_multi_agent": True,
+        "routing": {
+            "auto": {
                 "agent_type": None,
-                "note": "Coordinator automatically routes to best agent"
+                "description": "Coordinator automatically analyzes query and routes to best agent"
             },
-            "multi_mode_manual": {
-                "use_multi_agent": True,
+            "manual": {
                 "agent_type": "research|document|general|code",
-                "note": "You specify which agent to use"
+                "description": "Specify which agent to use directly"
             }
         }
     }
@@ -85,26 +74,20 @@ async def chat(request: ChatRequest):
     if not request.message.strip():
         raise HTTPException(status_code=400, detail="Message cannot be empty")
     
-    logger.info(f"Chat request — session: {request.session_id}, multi_agent: {request.use_multi_agent}")
+    logger.info(f"Chat request — session: {request.session_id}")
     
-    # Route to appropriate agent system
-    if request.use_multi_agent:
-        result = run_multi_agent(
-            message=request.message,
-            session_id=request.session_id,
-            agent_type=request.agent_type
-        )
-    else:
-        result = run_agent(
-            message=request.message,
-            session_id=request.session_id
-        )
+    # Always use multi-agent with coordinator routing
+    result = run_multi_agent(
+        message=request.message,
+        session_id=request.session_id,
+        agent_type=request.agent_type
+    )
     
     return ChatResponse(
         response=result["response"],
         session_id=result["session_id"],
         success=result["success"],
-        agent_used=result.get("agent_used", "Single Agent")
+        agent_used=result.get("agent_used", "Coordinator-Routed Agent")
     )
 
 @router.post("/upload")

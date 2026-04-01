@@ -46,34 +46,36 @@ class DocumentAgent(BaseAgent):
             # Build enhanced message with document context
             enhanced_message = message
             
-            # If user asks to summarize/analyze and documents exist, auto-load them
-            if ("summarize" in message.lower() or "analyze" in message.lower() or 
-                "read" in message.lower() or "what" in message.lower() or 
-                "tell" in message.lower()) and os.path.exists(config.upload_dir):
-                
-                # List all available documents
+            # Always try to load documents for the Document Agent
+            try:
+                os.makedirs(config.upload_dir, exist_ok=True)
                 files = [f for f in os.listdir(config.upload_dir) 
                         if os.path.splitext(f)[1].lower() in config.allowed_extensions]
+            except Exception as e:
+                logger.error(f"Error accessing uploads directory: {e}")
+                files = []
+            
+            if files:
+                doc_content_parts = []
                 
-                if files:
-                    doc_content_parts = []
-                    
-                    # Load first document
-                    for filename in files[:1]:
-                        try:
-                            content = _read_document_impl(filename)
+                # Load all available documents
+                for filename in files:
+                    try:
+                        content = _read_document_impl(filename)
+                        if not content.startswith("Error") and not content.startswith("File"):
                             doc_content_parts.append(f"Document '{filename}':\n{content}")
                             logger.info(f"Loaded document: {filename}")
-                        except Exception as e:
-                            logger.error(f"Error loading {filename}: {e}")
-                    
-                    if doc_content_parts:
-                        enhanced_message = (
-                            f"{message}\n\n" +
-                            "DOCUMENT CONTENT:\n---\n" +
-                            "\n---\n".join(doc_content_parts) +
-                            "\n---\n\nPlease analyze the above document and respond to the user's request."
-                        )
+                    except Exception as e:
+                        logger.error(f"Error loading {filename}: {e}")
+                
+                if doc_content_parts:
+                    enhanced_message = (
+                        f"{message}\n\n" +
+                        "DOCUMENT CONTENT:\n---\n" +
+                        "\n---\n".join(doc_content_parts) +
+                        "\n---\n\nPlease analyze the above document(s) and respond to the user's request."
+                    )
+                    logger.info(f"Enhanced message with {len(doc_content_parts)} document(s)")
             
             # Invoke the LLM
             prompt = self.build_prompt()

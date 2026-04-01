@@ -1,4 +1,4 @@
-"""Tests for API endpoints"""
+Write a simple Python function to add two numbers"""Tests for API endpoints"""
 
 import pytest
 from fastapi.testclient import TestClient

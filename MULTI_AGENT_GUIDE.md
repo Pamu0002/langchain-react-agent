@@ -86,14 +86,14 @@ User: "Show me how to create a REST API in FastAPI"
 
 ## How to Use
 
-### **Mode 1: Automatic (Recommended)**
+### **Mode 1: Automatic Routing (Recommended)**
 Let coordinator decide which agent to use:
 
 ```bash
 POST /chat
 {
   "message": "Search for AI news",
-  "use_multi_agent": true
+  "session_id": "optional-session-id"
 }
 
 Response:
@@ -106,14 +106,14 @@ Response:
 ```
 
 ### **Mode 2: Manual Agent Selection**
-You choose the specific agent:
+You choose the specific agent to use:
 
 ```bash
 POST /chat
 {
   "message": "Show me code examples",
-  "use_multi_agent": true,
-  "agent_type": "code"
+  "agent_type": "code",
+  "session_id": "optional-session-id"
 }
 
 Response:
@@ -121,25 +121,6 @@ Response:
   "response": "Here's a code example...",
   "session_id": "abc123",
   "agent_used": "Code/Technical Agent",
-  "success": true
-}
-```
-
-### **Mode 3: Single Agent (Original)**
-Use the original all-in-one agent:
-
-```bash
-POST /chat
-{
-  "message": "Tell me about AI",
-  "use_multi_agent": false
-}
-
-Response:
-{
-  "response": "AI is...",
-  "session_id": "abc123",
-  "agent_used": "Single Agent",
   "success": true
 }
 ```
@@ -154,14 +135,14 @@ GET /agents
 
 Response:
 {
-  "single_agent": {...},
-  "multi_agents": {
+  "system": "Multi-Agent with Intelligent Coordinator",
+  "agents": {
     "research": {...},
     "document": {...},
     "general": {...},
     "code": {...}
   },
-  "usage": {...}
+  "routing": {...}
 }
 ```
 
@@ -169,15 +150,14 @@ Response:
 ```
 POST /chat
 
-Query Params:
+Parameters:
 - message (required): User message
-- session_id (optional): Existing session
-- use_multi_agent (optional, default: false): Enable multi-agent mode
-- agent_type (optional): Force specific agent
+- session_id (optional): Existing session ID
+- agent_type (optional): Specify agent ('research', 'document', 'general', 'code') or None for auto-routing
 
 Response:
 - response: Agent's response
-- session_id: Session ID
+- session_id: Session ID  
 - agent_used: Which agent handled it
 - success: Was it successful?
 ```
@@ -213,44 +193,40 @@ def determine_agent(user_message: str) -> str:
 ## Architecture
 
 ```
-┌─────────────────────────────────────┐
-│         User Request                │
-└──────────────┬──────────────────────┘
-               │
-        ┌──────▼──────┐
-        │ Use_multi?  │
-        └──┬───────┬──┘
-      false│       │true
-           │       ├─────────────────────┐
-           │       │ Agent_type given?  │
-           │       └──┬──────────────┬──┘
-           │          │no            │yes
-           │          │         agent_type return
-           │          │              │
-           │    ┌─────▼──────────────┘
-           │    │ Coordinator
-           │    │ Determines Agent
-           │    └──┬──────────────────┬─────────┬──────────┐
-           │       │                  │         │          │
-        ┌──▼─────────────┐      ┌──────┴──┐ ┌──┴─────┐ ┌──┴────┐
-        │ Single Agent   │      │Research │ │Document│ │General┐
-        │ (All Tools)    │      │ Agent   │ │ Agent  │ │ Agent │
-        └────┬───────────┘      └────┬────┘ └───┬────┘ └───┬───┘
-             │                       │          │        │
-             │            ┌──────────┴──────────┘        │
-             │            │                      ┌────────┘
-             └────────────┬┘                      │
-                    ┌─────▼──────────────────────▼───┐
-                    │      Run Agent                  │
-                    │  • Execute tools               │
-                    │  • Maintain memory             │
-                    │  • Generate response           │
-                    └─────┬───────────────────────────┘
-                          │
-                    ┌─────▼──────────────┐
-                    │ Return Response    │
-                    │ + Agent Used       │
-                    └────────────────────┘
+┌──────────────────────────────────────────┐
+│         User Request                     │
+└────────────────┬─────────────────────────┘
+                 │
+          ┌──────▼──────────┐
+          │  Agent Specified?│
+          └──┬────────────┬──┘
+             │no          │yes
+             │         agent_type
+             │              │
+    ┌────────▼──────────────┘
+    │  Coordinator
+    │  Analyzes Intent
+    │  Routes to Best Agent
+    └────┬──────────────────┬──────────┬──────────┐
+         │                  │          │          │
+    ┌────▼────┐        ┌────▼────┐ ┌──▼────┐ ┌──▼────┐
+    │Research │        │Document │ │General│ │Code   │
+    │ Agent   │        │ Agent   │ │ Agent │ │ Agent │
+    └────┬────┘        └────┬────┘ └───┬───┘ └───┬───┘
+         │                  │          │         │
+         └──────────┬───────┴──────────┴─────────┘
+                    │
+             ┌──────▼──────────────┐
+             │   Run Agent         │
+             │ • Execute tools     │
+             │ • Maintain memory   │
+             │ • Generate response │
+             └──────┬──────────────┘
+                    │
+             ┌──────▼──────────────┐
+             │ Return Response     │
+             │ + Agent Used        │
+             └─────────────────────┘
 ```
 
 ---
@@ -263,7 +239,7 @@ def determine_agent(user_message: str) -> str:
 | Document | Fast | Very High | 2 | File analysis |
 | General | Fast | High | 0 | Knowledge Q&A |
 | Code | Medium | High | 1 | Programming |
-| Single | Slow | Medium | 3 | Everything |
+| Coordinator | Fast | Very High | 0 | Routing |
 
 ---
 
@@ -274,8 +250,7 @@ def determine_agent(user_message: str) -> str:
 curl -X POST http://localhost:8000/chat \
   -H "Content-Type: application/json" \
   -d '{
-    "message": "What are the latest developments in generative AI?",
-    "use_multi_agent": true
+    "message": "What are the latest developments in generative AI?"
   }'
 
 # Coordinator detects: research query
@@ -288,8 +263,7 @@ curl -X POST http://localhost:8000/chat \
 curl -X POST http://localhost:8000/chat \
   -H "Content-Type: application/json" \
   -d '{
-    "message": "Summarize the paper I uploaded",
-    "use_multi_agent": true
+    "message": "Summarize the paper I uploaded"
   }'
 
 # Coordinator detects: document reference
@@ -303,7 +277,6 @@ curl -X POST http://localhost:8000/chat \
   -H "Content-Type: application/json" \
   -d '{
     "message": "How do I implement JWT authentication in Python?",
-    "use_multi_agent": true,
     "agent_type": "code"
   }'
 
@@ -316,8 +289,7 @@ curl -X POST http://localhost:8000/chat \
 curl -X POST http://localhost:8000/chat \
   -H "Content-Type: application/json" \
   -d '{
-    "message": "Explain photosynthesis",
-    "use_multi_agent": true
+    "message": "Explain photosynthesis"
   }'
 
 # Coordinator detects: general knowledge
@@ -329,23 +301,22 @@ curl -X POST http://localhost:8000/chat \
 
 ## Configuration
 
-### Toggle Between Modes in Frontend
+### Toggle Between Auto and Manual Routing in Frontend
 
 Update `frontend/app.js`:
 
 ```javascript
-// Use multi-agent
-const useMultiAgent = true;
+// Auto-routing (let coordinator decide)
+const agentType = null;
 
-// Or specify agent
-const agentType = "research"; // or "document", "general", "code"
+// Or specify agent directly
+const agentType = "research"; // "research", "document", "general", "code"
 
 // Send request
 fetch("/chat", {
   method: "POST",
   body: JSON.stringify({
     message: userInput,
-    use_multi_agent: useMultiAgent,
     agent_type: agentType
   })
 });
@@ -353,34 +324,21 @@ fetch("/chat", {
 
 ### Adjust Agent Parameters
 
-Edit `agents.py`:
+Edit `agents.py` or `coordinator.py`:
 
 ```python
 # Change temperature for specific agent
-@dataclass
-class ResearchConfig:
-    temperature: float = 0.5  # More factual
-    max_iterations: int = 6
+RESEARCH_PROMPT = """Your specialized prompt here"""
 
 # Change tools for agent
-RESEARCH_TOOLS = [web_search]  # Add more if needed
+RESEARCH_TOOLS = [web_search]
+
+# Change coordinator temperature for routing precision
+coordinator_llm = ChatGroq(
+    temperature=0.3,  # Lower = more precise routing
+    max_tokens=50
+)
 ```
-
----
-
-## Switching Back to Single Agent
-
-If you prefer the original single agent:
-
-```bash
-POST /chat
-{
-  "message": "Your message",
-  "use_multi_agent": false
-}
-```
-
-Or leave `use_multi_agent` unset (defaults to false).
 
 ---
 
@@ -418,9 +376,13 @@ Or leave `use_multi_agent` unset (defaults to false).
 
 ```
 agents/
-├── agents.py                 ← Multi-agent system
-├── agent.py                  ← Original single agent
-├── server.py                 ← Updated with multi-agent endpoints
+├── __init__.py               ← Multi-agent system entry point
+├── base.py                   ← BaseAgent class
+├── coordinator.py            ← Coordinator router
+├── research.py               ← Research Agent
+├── document.py               ← Document Agent
+├── general.py                ← General Q&A Agent
+├── code.py                   ← Code/Technical Agent
 ├── memory.py                 ← Shared session memory
 └── tools/
     ├── search.py
@@ -430,5 +392,5 @@ agents/
 
 ---
 
-**Multi-Agent System v1.0** ✨  
-4 Specialist Agents + Intelligent Coordinator
+**Multi-Agent System v2.0** ✨  
+Consolidated: 4 Specialist Agents + Intelligent Coordinator
