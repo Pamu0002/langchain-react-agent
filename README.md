@@ -36,26 +36,184 @@ ARIA is a **self-hosted multi-agent AI assistant** built with LangChain, FastAPI
 
 ## 🏗️ Architecture
 
-ARIA uses a **Multi-Agent Router Architecture** where a Coordinator analyzes incoming messages and routes them to the most appropriate specialist agent:
+ARIA implements a **Hierarchical Multi-Agent Router Pattern** with intelligent request classification and specialized agent delegation:
 
 ```
-User Query → Coordinator → Analyzes Intent → Routes to:
-                                          ├─ ResearchAgent (web search)
-                                          ├─ DocumentAgent (file analysis)
-                                          ├─ GeneralAgent (reasoning)
-                                          └─ CodeAgent (programming)
-                          ↓
-                    Agent processes with LLM
-                          ↓
-                    Response to user
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         📱 FRONTEND LAYER                                   │
+│  ┌──────────────────────────────────────────────────────────────────────┐   │
+│  │ Web UI (HTML5/CSS3/JavaScript) - Glassmorphic Design               │   │
+│  │ • Real-time Chat Interface  • File Upload  • Session Management    │   │
+│  │ • Theme Persistence         • Message History                      │   │
+│  └────────────────────────┬─────────────────────────────────────────┬─┘   │
+│                          │ HTTP/JSON                               │       │
+└──────────────────────────┼───────────────────────────────────────┼────────┘
+                           │                                       │
+                           ▼                                       ▼
+        ┌──────────────────────────────────────────────────────────────┐
+        │              ⚙️ FASTAPI BACKEND LAYER                        │
+        │  ┌────────────────────────────────────────────────────────┐  │
+        │  │ API Routes: /chat, /upload, /clear (REST Endpoints) │  │
+        │  │ CORS Enabled • Static File Serving • Error Handling  │  │
+        │  └────────────┬─────────────────────────────────────────┘  │
+        │               │                                             │
+        │               ▼                                             │
+        │  ┌────────────────────────────────────────────────────────┐  │
+        │  │         🧠 REQUEST PROCESSING PIPELINE                │  │
+        │  │                                                        │  │
+        │  │  1. Parse Request & Extract Message                  │  │
+        │  │  2. Load Session Context (if exists)                 │  │
+        │  │  3. Build Prompt with History                        │  │
+        │  │  4. Route to Coordinator                             │  │
+        │  └────────────┬─────────────────────────────────────────┘  │
+        │               │                                             │
+        └───────────────┼─────────────────────────────────────────────┘
+                        │
+        ┌───────────────▼─────────────────────────────────────────────┐
+        │          🎯 COORDINATOR (ROUTER AGENT)                      │
+        │  ┌──────────────────────────────────────────────────────┐  │
+        │  │ Intent Classification Engine                         │  │
+        │  │ • Analyzes query semantics & keywords               │  │
+        │  │ • Determines optimal agent match                    │  │
+        │  │ • Confidence score calculation                      │  │
+        │  │ • Fallback to multi-agent if ambiguous             │  │
+        │  │ Uses: llama-3.3-70b via Groq API                  │  │
+        │  └──┬────────┬──────────┬──────────┬──────────────────┘  │
+        │     │        │          │          │                      │
+        └─────┼────────┼──────────┼──────────┼──────────────────────┘
+              │        │          │          │
+        ┌─────▼───┬────▼───┬─────▼────┬────▼──────────────────────┐
+        │          │        │          │                           │
+        │ 🔍 Research │📄 Document│💭 General Q&A│💻 Code Agent│
+        │ Agent    │ Agent  │ Agent   │ Agent       │
+        │          │        │          │             │
+    ┌───▼──────┐ ┌─▼─────┐ ┌──▼────┐ ┌──▼─────────┐│
+    │ Web Search│ │PDF    │ │Knowledge│ │ Web Search ││
+    │ Tool      │ │Reader │ │ Base    │ │ Tool       ││
+    │ DuckDuckGo│ │ Tool  │ │ Reasoning │ │ Tool Chain ││
+    ├────────────┤ ├────────┤ ├────────┤ ├────────────┤│
+    │ Research   │ │Document│ │ General│ │ Code       ││
+    │ Prompt     │ │Prompt  │ │Prompt  │ │ Prompt     ││
+    └─────┬──────┘ └──┬────┘ └───┬────┘ └──┬─────────┘│
+          │           │          │         │           │
+          └───────────┼──────────┼─────────┘           │
+                      │          │                      │
+          ┌───────────▼──────────▼──────────────────────▼──┐
+          │    🚀 LLM INFERENCE ENGINE                     │
+          │  ┌─────────────────────────────────────────┐  │
+          │  │ Groq API Client                         │  │
+          │  │ Model: llama-3.3-70b-versatile         │  │
+          │  │ Token Management • Rate Limiting        │  │
+          │  │ Response Streaming • Error Handling     │  │
+          │  └──────────┬────────────────────────────┘  │
+          │             │                                │
+          └─────────────┼────────────────────────────────┘
+                        │
+          ┌─────────────▼────────────────────────────────┐
+          │    💾 RESPONSE AGGREGATION & STORAGE        │
+          │  ┌──────────────────────────────────────┐  │
+          │  │ Format Response JSON                 │  │
+          │  │ Parse Agent Output                   │  │
+          │  │ Store in Session Memory              │  │
+          │  │ Compute Session ID                   │  │
+          │  └──────────┬─────────────────────────┘  │
+          │             │                             │
+          └─────────────┼─────────────────────────────┘
+                        │
+        ┌───────────────▼──────────────────────────────┐
+        │   📊 SESSION & MEMORY MANAGEMENT            │
+        │  ┌────────────────────────────────────────┐ │
+        │  │ In-Memory Session Store                │ │
+        │  │ • Max 20 messages per session         │ │
+        │  │ • Conversation history tracking       │ │
+        │  │ • Session TTL management              │ │
+        │  │ • Document context preservation       │ │
+        │  └────────────────────────────────────────┘ │
+        └────────────┬──────────────────────────────────┘
+                     │
+        ┌────────────▼──────────────────────────────────┐
+        │    📁 FILE HANDLING SUBSYSTEM                 │
+        │  ┌────────────────────────────────────────┐  │
+        │  │ Document Processing Pipeline           │  │
+        │  │ • PDF Extraction (PyPDF)              │  │
+        │  │ • DOCX Parsing (python-docx)          │  │
+        │  │ • Markdown Processing                 │  │
+        │  │ • Text File Reading                   │  │
+        │  │ • File Size Validation (10MB limit)   │  │
+        │  │ • MIME Type Checking                  │  │
+        │  └────────────────────────────────────────┘  │
+        └───────────────────────────────────────────────┘
 ```
 
-**Why this approach?**
-- 🎯 **Specialization** - Each agent optimized for its domain
-- ⚡ **Efficiency** - Right tool for right task
-- 📈 **Scalability** - Add agents without changing existing code
-- 🧩 **Maintainability** - Clean separation of concerns
-- 🔧 **Flexibility** - Users can force specific agent or let AI decide
+### 🔄 Request Flow Sequence
+
+```
+1. USER MESSAGE INPUT
+   └─→ Frontend captures message + optional file
+       └─→ HTTP POST to /chat endpoint
+
+2. REQUEST VALIDATION
+   └─→ Parse JSON payload
+       └─→ Validate message length
+           └─→ Check file size/type (if upload)
+
+3. SESSION CONTEXT LOADING
+   └─→ Retrieve session by ID (or create new)
+       └─→ Load conversation history (last 20 msgs)
+           └─→ Prepare context window
+
+4. COORDINATOR ANALYSIS
+   └─→ Coordinator LLM analyzes query intent
+       ├─→ Check if research query
+       ├─→ Check if code-related
+       ├─→ Check if document analysis
+       └─→ Default to general Q&A
+
+5. AGENT EXECUTION
+   └─→ Selected agent initializes
+       ├─→ Set system prompt (role-specific)
+       ├─→ Add tools (if applicable)
+       ├─→ Prepare context window
+       └─→ Invoke LLM with prompt
+
+6. LLM INFERENCE
+   └─→ Groq API receives request
+       └─→ llama-3.3-70b processes
+           └─→ Streams or returns response
+               └─→ Token counting + tracking
+
+7. RESPONSE PROCESSING
+   └─→ Parse LLM output
+       ├─→ Extract text content
+       ├─→ Identify agent used
+       └─→ Format as JSON response
+
+8. SESSION STORAGE
+   └─→ Add user message to history
+       └─→ Add assistant response to history
+           └─→ Update session metadata
+               └─→ Return response to frontend
+
+9. FRONTEND RENDERING
+   └─→ Receive JSON response
+       ├─→ Display user message (immediate)
+       ├─→ Show typing indicator
+       ├─→ Display agent response (animated)
+       └─→ Update session display
+```
+
+### 🎯 Why This Architecture?
+
+| Aspect | Benefit |
+|--------|---------|
+| **Agents** | Specialized handling per domain → Better accuracy |
+| **Coordinator** | Intelligent routing → Optimal resource use |
+| **Session Memory** | Conversation persistence → Context awareness |
+| **Tool System** | Pluggable tools → Extensibility |
+| **Async Processing** | Non-blocking → Better UX |
+| **Error Isolation** | Agent failures don't crash system → Reliability |
+| **LLM Router** | AI-powered routing → Flexibility |
+| **Modular Design** | Add agents without code changes → Maintainability |
 
 ---
 
